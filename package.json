@@ -7,7 +7,7 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "node scripts/postinstall-prisma.js",
-    "vercel-build": "prisma generate --schema=prisma/schema.prisma && prisma migrate deploy --schema=prisma/schema.prisma && next build",
+    "vercel-build": "node scripts/generate-client.js && next build",
     "build": "next build"
   },
   "dependencies": {

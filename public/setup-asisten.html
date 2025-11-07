@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Setup Asisten Session</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-md mx-auto bg-white p-6 rounded-lg shadow">
+        <h1 class="text-2xl font-bold mb-4">Setup Asisten Session</h1>
+        
+        <button onclick="setupAsisten()" class="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 mb-4">
+            Login sebagai Asisten
+        </button>
+        
+        <button onclick="checkSession()" class="w-full bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 mb-4">
+            Cek Current Session
+        </button>
+        
+        <a href="/asisten/peminjaman-alat" class="block w-full bg-purple-600 text-white py-2 px-4 rounded hover:bg-purple-700 text-center">
+            Go to Asisten Panel
+        </a>
+        
+        <div id="status" class="mt-4 p-3 bg-gray-100 rounded text-sm"></div>
+    </div>
+
+    <script>
+        function setupAsisten() {
+            const asistenUser = {
+                id: 5,
+                email: "asisten@test.com", 
+                role: "ASISTEN"
+            };
+            
+            localStorage.setItem('biomedis_user', JSON.stringify(asistenUser));
+            document.getElementById('status').innerHTML = 
+                `<div class="text-green-600">✓ Logged in as: ${asistenUser.email} (${asistenUser.role})</div>`;
+        }
+        
+        function checkSession() {
+            const user = localStorage.getItem('biomedis_user');
+            if (user) {
+                const parsed = JSON.parse(user);
+                document.getElementById('status').innerHTML = 
+                    `<div class="text-blue-600">Current user: ${parsed.email} (${parsed.role})</div>`;
+            } else {
+                document.getElementById('status').innerHTML = 
+                    `<div class="text-red-600">No session found</div>`;
+            }
+        }
+        
+        // Auto check on load
+        window.onload = checkSession;
+    </script>
+</body>
+</html>

@@ -3,7 +3,6 @@ import Image from "next/image";
 import { useState, useRef } from "react";
 import { ChevronDown } from "lucide-react";
 import { motion } from "framer-motion";
-import Footer from "./components/Footer";
 
 export default function HomePage() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -15,7 +14,7 @@ export default function HomePage() {
   const contactUsRef = useRef<HTMLDivElement>(null);
 
   return (
-    <main className="min-h-screen bg-[#FAF6EF] flex flex-col text-[#1a1a1a] relative">
+    <main className="bg-[#FAF6EF] flex flex-col text-[#1a1a1a]">
       {/* ====== HERO SECTION ====== */}
       <section className="relative h-screen w-full">
         <Image
@@ -41,7 +40,7 @@ export default function HomePage() {
       {/* ====== MAIN CONTENT + SIDEBAR WRAPPER ====== */}
       <section
         className="
-          relative md:-mt-90 z-30
+          relative md:-mt-20 z-30
           flex flex-col md:flex-row 
           w-full max-w-8xl mx-auto 
         "
@@ -482,8 +481,6 @@ export default function HomePage() {
           </div>
         </motion.main>
       </section>
-
-      <Footer/>
     </main>
   );
 }

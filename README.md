@@ -60,11 +60,11 @@ Sistem ini mencakup manajemen sesi praktikum, peminjaman peralatan, serta pengat
 |-----------|------------|
 | **Frontend** | Next.js 13 (App Router) |
 | **Backend** | Next.js API Routes |
-| **Database** | PostgreSQL |
-| **ORM** | Prisma |
+| **Database** | Firebase Firestore |
+| **Authentication** | Firebase Auth |
 | **UI Framework** | Tailwind CSS |
 | **Animasi** | Framer Motion |
-| **Deployment** | Railway |
+| **Deployment** | Vercel |
 
 ---
 
@@ -72,8 +72,8 @@ Sistem ini mencakup manajemen sesi praktikum, peminjaman peralatan, serta pengat
 
 ### 🧩 Prasyarat
 Sebelum memulai, pastikan Anda sudah menginstal:
-- **Node.js** (versi terbaru)
-- **PostgreSQL**
+- **Node.js** (versi 18 atau lebih baru)
+- **Firebase Account** (untuk Firestore & Authentication)
 - **Git**
 
 ### 💻 Langkah Instalasi
@@ -87,19 +87,20 @@ Sebelum memulai, pastikan Anda sudah menginstal:
    ```bash
    npm install
 
-3. **Buat file .env di root proyek**
+3. **Setup Firebase**
+   - Buat project di [Firebase Console](https://console.firebase.google.com/)
+   - Enable Firestore Database
+   - Enable Authentication (Email/Password)
+   - Download service account key dan simpan sebagai `firebase-service-account.json` di root project
+   
+4. **Buat file .env.local di root proyek**
    ```bash
-   DATABASE_URL="postgresql://postgres:WGtfdnZSYHqlckaROOMSdULsnrXdwPxd@centerbeam.proxy.rlwy.net:24474/railway"
+   FIREBASE_SERVICE_ACCOUNT='{"type":"service_account",...}'
+   ```
 
-
-4. **Generate Prisma Client**
-   ```bash
-   npx prisma generate 
-
-5. **Migrasi database**
-   ```bash
-   npx prisma generate dev
-
-6. **Jalankan server**
+5. **Jalankan development server**
    ```bash
    npm run dev
+   ```
+
+Aplikasi akan berjalan di `http://localhost:3000`

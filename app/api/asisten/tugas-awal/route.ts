@@ -1,112 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@/app/generated/prisma/client';
+import { TugasAwalRepository, UserRepository } from '@/lib/firebase-repositories';
 
-const prisma = new PrismaClient();
-
-// GET: Ambil semua tugas awal untuk modul tertentu (khusus asisten)
+// GET - Get tugas awal by modulId with user info (for asisten to grade)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const modulId = searchParams.get('modulId');
-    const userRole = searchParams.get('userRole');
-
-    // Cek authorization - hanya asisten yang bisa mengakses
-    if (userRole !== 'ASISTEN') {
-      return NextResponse.json({ error: 'Unauthorized. Only asisten can access this data.' }, { status: 403 });
-    }
+    const includeUsers = searchParams.get('includeUsers') === 'true';
 
     if (!modulId) {
-      return NextResponse.json({ error: 'modulId is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'modulId is required' },
+        { status: 400 }
+      );
     }
 
-    // Ambil semua tugas awal untuk modul tertentu dengan info user
-    const tugasAwalList = await prisma.tugasAwal.findMany({
-      where: {
-        modulId: modulId
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            role: true
-          }
-        }
-      },
-      orderBy: [
-        { submitAt: 'desc' },
-        { createdAt: 'desc' }
-      ]
-    });
+    // Get all tugas for this module
+    const tugasList = await TugasAwalRepository.findAll();
+    const filteredTugas = tugasList.filter((tugas: any) => tugas.modulId === modulId);
 
-    return NextResponse.json({ 
-      success: true, 
-      data: tugasAwalList,
-      count: tugasAwalList.length 
-    });
+    if (includeUsers) {
+      // Populate user data for each tugas
+      const tugasWithUsers = await Promise.all(
+        filteredTugas.map(async (tugas: any) => {
+          const user = await UserRepository.findById(tugas.userId);
+          return {
+            ...tugas,
+            user: user ? { 
+              id: user.id, 
+              email: user.email, 
+              role: user.role,
+              nim: user.nim 
+            } : null,
+          };
+        })
+      );
 
+      return NextResponse.json({
+        success: true,
+        data: tugasWithUsers,
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: filteredTugas,
+    });
   } catch (error) {
-    console.error('Get tugas awal list error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
-
-// PUT: Update nilai tugas awal (khusus asisten)
-export async function PUT(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { tugasAwalId, nilai, keterangan, userRole, nilaiBy } = body;
-
-    // Cek authorization - hanya asisten yang bisa menilai
-    if (userRole !== 'ASISTEN') {
-      return NextResponse.json({ error: 'Unauthorized. Only asisten can grade assignments.' }, { status: 403 });
-    }
-
-    // Validasi input
-    if (!tugasAwalId) {
-      return NextResponse.json({ error: 'tugasAwalId is required' }, { status: 400 });
-    }
-
-    if (nilai !== null && (typeof nilai !== 'number' || nilai < 0 || nilai > 100)) {
-      return NextResponse.json({ error: 'Nilai must be a number between 0 and 100' }, { status: 400 });
-    }
-
-    // Update tugas awal dengan nilai
-    const updatedTugasAwal = await prisma.tugasAwal.update({
-      where: {
-        id: tugasAwalId
+    console.error('Error fetching tugas by module:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch tugas',
       },
-      data: {
-        nilai: nilai,
-        nilaiAt: nilai !== null ? new Date() : null,
-        nilaiBy: nilai !== null ? nilaiBy : null,
-        keterangan: keterangan || null,
-        updatedAt: new Date()
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            role: true
-          }
-        }
-      }
-    });
-
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Nilai berhasil diupdate',
-      data: updatedTugasAwal 
-    });
-
-  } catch (error) {
-    console.error('Update nilai tugas awal error:', error);
-    
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2025') {
-      return NextResponse.json({ error: 'Tugas awal not found' }, { status: 404 });
-    }
-    
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+      { status: 500 }
+    );
   }
 }

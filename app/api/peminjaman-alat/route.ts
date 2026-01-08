@@ -1,148 +1,115 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient, StatusPeminjamanAlat } from '@/app/generated/prisma/client';
+import { PeminjamanAlatRepository, AlatRepository } from '@/lib/firebase-repositories';
+import { StatusPeminjamanAlat } from '@/lib/firebase-collections';
 
-const prisma = new PrismaClient();
-
-interface WhereClause {
-  userId?: number;
-  status?: StatusPeminjamanAlat;
-}
-
-// GET - Ambil daftar peminjaman alat dengan filters
+// GET - Get all peminjaman alat or filter by userId/status
 export async function GET(request: NextRequest) {
   try {
-    const searchParams = request.nextUrl.searchParams;
+    const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
-    const status = searchParams.get('status');
+    const status = searchParams.get('status') as StatusPeminjamanAlat | null;
 
-    const whereClause: WhereClause = {};
-    
+    let peminjamanList;
+
     if (userId) {
-      whereClause.userId = parseInt(userId);
+      peminjamanList = await PeminjamanAlatRepository.findByUserId(userId);
+    } else if (status) {
+      peminjamanList = await PeminjamanAlatRepository.findByStatus(status);
+    } else {
+      peminjamanList = await PeminjamanAlatRepository.findAll();
     }
-    
-    if (status) {
-      whereClause.status = status as StatusPeminjamanAlat;
-    }
-
-    const peminjamanAlats = await prisma.peminjamanAlat.findMany({
-      where: whereClause,
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true
-          }
-        },
-        alat: true
-      },
-      orderBy: [
-        { createdAt: 'desc' }
-      ]
-    });
 
     return NextResponse.json({
       success: true,
-      data: peminjamanAlats
+      data: peminjamanList,
     });
-
   } catch (error) {
-    console.error('Get peminjaman alats error:', error);
+    console.error('Error fetching peminjaman alat:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        success: false,
+        error: 'Failed to fetch peminjaman alat',
+      },
       { status: 500 }
     );
   }
 }
 
-// POST - Buat peminjaman alat baru
+// POST - Create new peminjaman alat
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    console.log('Received body:', body);
-    
-    const { userId, alatId, jumlah, tanggalPinjam, tanggalKembali, tujuanPenggunaan } = body;
+    const {
+      userId,
+      alatId,
+      nama,
+      nim,
+      email,
+      tanggalPinjam,
+      tanggalKembali,
+      keperluan,
+      jumlahPinjam,
+    } = body;
 
-    // Validasi required fields
-    if (!userId || !alatId || !tanggalPinjam || !tanggalKembali || !tujuanPenggunaan) {
+    // Validation
+    if (!userId || !alatId || !nama || !nim || !email || !tanggalPinjam || !tanggalKembali || !keperluan || !jumlahPinjam) {
       return NextResponse.json(
-        { error: 'UserId, alat, tanggal pinjam, tanggal kembali, dan tujuan penggunaan harus diisi' },
+        {
+          success: false,
+          error: 'All fields are required',
+        },
         { status: 400 }
       );
     }
 
-    // Cari user berdasarkan userId
-    const user = await prisma.user.findUnique({
-      where: { id: parseInt(userId) }
-    });
-
-    if (!user) {
-      console.log('User not found with ID:', userId);
-      return NextResponse.json(
-        { error: 'User tidak ditemukan' },
-        { status: 404 }
-      );
-    }
-
-    // Cek ketersediaan alat
-    const alat = await prisma.alat.findUnique({
-      where: { id: parseInt(alatId) }
-    });
-
+    // Check alat availability
+    const alat = await AlatRepository.findById(alatId);
     if (!alat) {
       return NextResponse.json(
-        { error: 'Alat tidak ditemukan' },
+        {
+          success: false,
+          error: 'Alat not found',
+        },
         { status: 404 }
       );
     }
 
-    const jumlahPinjamInt = parseInt(jumlah) || 1;
-    if (alat.jumlahTersedia < jumlahPinjamInt) {
+    if (alat.jumlahTersedia < Number(jumlahPinjam)) {
       return NextResponse.json(
-        { error: `Alat tidak mencukupi. Tersedia: ${alat.jumlahTersedia}` },
+        {
+          success: false,
+          error: `Alat tidak tersedia. Tersisa: ${alat.jumlahTersedia}`,
+        },
         { status: 400 }
       );
     }
 
-    // Buat peminjaman
-    const peminjamanAlat = await prisma.peminjamanAlat.create({
-      data: {
-        userId: parseInt(userId),
-        alatId: parseInt(alatId),
-        nama: body.nama || 'Unknown',
-        nim: body.nim || '',
-        email: user.email,
-        tanggalPinjam: new Date(tanggalPinjam),
-        tanggalKembali: new Date(tanggalKembali),
-        keperluan: tujuanPenggunaan,
-        jumlahPinjam: jumlahPinjamInt,
-        status: 'PENDING'
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true
-          }
-        },
-        alat: true
-      }
+    // Create peminjaman with PENDING status
+    const newPeminjaman = await PeminjamanAlatRepository.create({
+      userId,
+      alatId,
+      nama,
+      nim,
+      email,
+      tanggalPinjam: new Date(tanggalPinjam),
+      tanggalKembali: new Date(tanggalKembali),
+      keperluan,
+      jumlahPinjam: Number(jumlahPinjam),
+      status: StatusPeminjamanAlat.PENDING,
     });
 
-    // Update jumlah tersedia alat
-    await prisma.alat.update({
-      where: { id: parseInt(alatId) },
-      data: {
-        jumlahTersedia: alat.jumlahTersedia - jumlahPinjamInt
-      }
-    });
-
-    return NextResponse.json(peminjamanAlat);
-
+    return NextResponse.json({
+      success: true,
+      message: 'Peminjaman alat created successfully',
+      data: newPeminjaman,
+    }, { status: 201 });
   } catch (error) {
-    console.error('Create peminjaman alat error:', error);
+    console.error('Error creating peminjaman alat:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        success: false,
+        error: 'Failed to create peminjaman alat',
+      },
       { status: 500 }
     );
   }

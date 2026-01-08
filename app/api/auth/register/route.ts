@@ -1,32 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@/app/generated/prisma/client';
 import bcrypt from 'bcryptjs';
-
-const prisma = new PrismaClient();
+import { UserRepository } from '@/lib/firebase-repositories';
+import { UserRole } from '@/lib/firebase-collections';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password } = await request.json();
+    const { email, password, role, uid, nim } = await request.json();
+
+    console.log('Register attempt:', { email, role, uid, nim });
 
     // Validation
-    if (!email || !password) {
+    if (!email || !password || !uid || !nim) {
       return NextResponse.json(
-        { error: 'Email and password are required' },
+        { error: 'Email, password, UID, and NIM are required' },
         { status: 400 }
       );
     }
 
     if (password.length < 8) {
       return NextResponse.json(
-        {error: 'Password must be at least 8 characters long'},
-        {status: 400}
+        { error: 'Password must be at least 8 characters long' },
+        { status: 400 }
       );
     }
 
     // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email }
-    });
+    const existingUser = await UserRepository.findByEmail(email);
 
     if (existingUser) {
       return NextResponse.json(
@@ -38,20 +37,26 @@ export async function POST(request: NextRequest) {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword
-      }
+    // Create user with all fields
+    const user = await UserRepository.create({
+      uid: uid,
+      email: email,
+      hashPassword: hashedPassword,
+      nim: nim,
+      role: role || UserRole.PRAKTIKAN,
     });
+
+    console.log('User created:', { id: user.id, email: user.email, uid: user.uid });
 
     return NextResponse.json(
       { 
         message: 'User created successfully',
         user: {
           id: user.id,
-          email: user.email
+          uid: user.uid,
+          email: user.email,
+          role: user.role,
+          nim: user.nim
         }
       },
       { status: 201 }
@@ -63,7 +68,5 @@ export async function POST(request: NextRequest) {
       { error: 'Internal server error' },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }

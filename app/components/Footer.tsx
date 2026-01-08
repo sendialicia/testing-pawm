@@ -9,7 +9,7 @@ export default function Footer() {
           <Image src="/LogoHitam.png" alt="Logo" width={100} height={100} />
         </div>
 
-        <p>© 2025 clients. All Rights Reserved.</p>
+        <p className="text-gray-800">© 2025 clients. All Rights Reserved.</p>
 
         {/* Logo ITB */}
         <Image

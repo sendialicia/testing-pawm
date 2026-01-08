@@ -70,11 +70,15 @@ export default function PeminjamanLabPage() {
       const fetchData = async () => {
         try {
           setPermohonanLoading(true);
-          const response = await fetch(`/api/permohonan?userId=${user.id}&userRole=${user.role}`);
+          // Asisten gets all permohonan, praktikan gets only their own
+          const url = user.role === 'ASISTEN' 
+            ? '/api/permohonan' 
+            : `/api/permohonan?userId=${user.id}`;
+          const response = await fetch(url);
           const data = await response.json();
           
-          if (response.ok) {
-            setPermohonan(data.permohonan);
+          if (response.ok && data.success) {
+            setPermohonan(data.data || []);
           } else {
             console.error('Error fetching permohonan:', data.error);
           }
@@ -93,11 +97,15 @@ export default function PeminjamanLabPage() {
     
     try {
       setPermohonanLoading(true);
-      const response = await fetch(`/api/permohonan?userId=${user.id}&userRole=${user.role}`);
+      // Asisten gets all permohonan, praktikan gets only their own
+      const url = user.role === 'ASISTEN' 
+        ? '/api/permohonan' 
+        : `/api/permohonan?userId=${user.id}`;
+      const response = await fetch(url);
       const data = await response.json();
       
-      if (response.ok) {
-        setPermohonan(data.permohonan);
+      if (response.ok && data.success) {
+        setPermohonan(data.data || []);
       } else {
         console.error('Error fetching permohonan:', data.error);
       }
@@ -121,7 +129,7 @@ export default function PeminjamanLabPage() {
 
     try {
       const response = await fetch(`/api/permohonan/${selectedPermohonan.id}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -129,7 +137,6 @@ export default function PeminjamanLabPage() {
           status: updateStatus,
           approvedBy: user.email,
           keterangan,
-          userRole: user.role
         })
       });
 
@@ -760,19 +767,19 @@ export default function PeminjamanLabPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                   <div className="bg-white p-6 rounded-xl shadow-lg text-center">
                     <div className="text-3xl font-bold text-yellow-600">
-                      {permohonan.filter(p => p.status === 'PENDING').length}
+                      {(permohonan || []).filter(p => p.status === 'PENDING').length}
                     </div>
                     <div className="text-gray-600">Pending</div>
                   </div>
                   <div className="bg-white p-6 rounded-xl shadow-lg text-center">
                     <div className="text-3xl font-bold text-green-600">
-                      {permohonan.filter(p => p.status === 'APPROVED').length}
+                      {(permohonan || []).filter(p => p.status === 'APPROVED').length}
                     </div>
                     <div className="text-gray-600">Approved</div>
                   </div>
                   <div className="bg-white p-6 rounded-xl shadow-lg text-center">
                     <div className="text-3xl font-bold text-red-600">
-                      {permohonan.filter(p => p.status === 'REJECTED').length}
+                      {(permohonan || []).filter(p => p.status === 'REJECTED').length}
                     </div>
                     <div className="text-gray-600">Rejected</div>
                   </div>
@@ -798,7 +805,7 @@ export default function PeminjamanLabPage() {
                     </div>
                   ) : (
                     <div className="divide-y divide-gray-200">
-                      {permohonan.map((item) => (
+                      {(permohonan || []).map((item) => (
                         <div key={item.id} className="p-6 hover:bg-gray-50 transition-colors">
                           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div className="flex-1">

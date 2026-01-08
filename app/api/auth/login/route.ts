@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@/app/generated/prisma/client';
 import bcrypt from 'bcryptjs';
-
-const prisma = new PrismaClient();
+import { UserRepository } from '@/lib/firebase-repositories';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,9 +18,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Find user by email
-    const user = await prisma.user.findUnique({
-      where: { email }
-    });
+    const user = await UserRepository.findByEmail(email);
 
     console.log('User found:', user ? { id: user.id, email: user.email } : 'null');
 
@@ -34,23 +30,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Debug password comparison
-    console.log('Stored password:', user.password);
-    console.log('Input password:', password);
-    
     // Check if password is hashed or plain text
-    const isPasswordHashed = user.password.startsWith('$2');
+    const isPasswordHashed = user.hashPassword.startsWith('$2');
     let isPasswordValid = false;
     
     if (isPasswordHashed) {
       // Use bcrypt for hashed passwords
-      isPasswordValid = await bcrypt.compare(password, user.password);
+      isPasswordValid = await bcrypt.compare(password, user.hashPassword);
     } else {
       // Direct comparison for plain text passwords
-      isPasswordValid = password === user.password;
+      isPasswordValid = password === user.hashPassword;
     }
     
-    console.log('Password hashed:', isPasswordHashed);
     console.log('Password valid:', isPasswordValid);
 
     if (!isPasswordValid) {
@@ -67,8 +58,10 @@ export async function POST(request: NextRequest) {
         message: 'Login successful',
         user: {
           id: user.id,
+          uid: user.uid,
           email: user.email,
-          role: user.role
+          role: user.role,
+          nim: user.nim
         }
       },
       { status: 200 }
@@ -80,7 +73,5 @@ export async function POST(request: NextRequest) {
       { error: 'Internal server error' },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }

@@ -1,111 +1,160 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient, StatusPeminjamanAlat } from '@/app/generated/prisma/client';
+import { PeminjamanAlatRepository, AlatRepository } from '@/lib/firebase-repositories';
+import { StatusPeminjamanAlat } from '@/lib/firebase-collections';
 
-const prisma = new PrismaClient();
-
-// PUT - Update status peminjaman alat (untuk asisten)
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// GET - Get peminjaman alat by ID
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
-    const body = await request.json();
-    const { status, keterangan, approvedBy } = body;
-    const resolvedParams = await params;
-    const peminjamanId = parseInt(resolvedParams.id);
+    const params = await context.params;
+    const peminjaman = await PeminjamanAlatRepository.findById(params.id);
 
-    if (!status) {
+    if (!peminjaman) {
       return NextResponse.json(
-        { error: 'Status harus diisi' },
-        { status: 400 }
-      );
-    }
-
-    // Ambil data peminjaman untuk update stok alat
-    const existingPeminjaman = await prisma.peminjamanAlat.findUnique({
-      where: { id: peminjamanId },
-      include: { alat: true }
-    });
-
-    if (!existingPeminjaman) {
-      return NextResponse.json(
-        { error: 'Peminjaman tidak ditemukan' },
+        {
+          success: false,
+          error: 'Peminjaman not found',
+        },
         { status: 404 }
       );
     }
 
-    // Update status peminjaman
-    const updatedData: {
-      status: StatusPeminjamanAlat;
-      keterangan?: string | null;
-      approvedBy?: string;
-      approvedAt?: Date;
-      dikembalikanAt?: Date;
-    } = {
-      status: status as StatusPeminjamanAlat,
-      keterangan: keterangan || null
-    };
+    return NextResponse.json({
+      success: true,
+      data: peminjaman,
+    });
+  } catch (error) {
+    console.error('Error fetching peminjaman:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to fetch peminjaman',
+      },
+      { status: 500 }
+    );
+  }
+}
 
-    if (status === 'APPROVED') {
-      updatedData.approvedBy = approvedBy;
-      updatedData.approvedAt = new Date();
-    } else if (status === 'DIKEMBALIKAN') {
-      updatedData.dikembalikanAt = new Date();
-    }
+// PATCH - Update peminjaman status (approve/reject/dikembalikan)
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const params = await context.params;
+    const body = await request.json();
+    const { status, approvedBy, keterangan } = body;
 
-    const peminjamanAlat = await prisma.peminjamanAlat.update({
-      where: { id: peminjamanId },
-      data: updatedData,
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true
-          }
-        },
-        alat: true
-      }
+    console.log('PATCH peminjaman alat:', {
+      id: params.id,
+      status,
+      approvedBy,
+      keterangan
     });
 
-    // Update stok alat berdasarkan status
-    if (status === 'APPROVED' && existingPeminjaman.status === 'PENDING') {
-      // Kurangi stok saat approve
-      await prisma.alat.update({
-        where: { id: existingPeminjaman.alatId },
-        data: {
-          jumlahTersedia: {
-            decrement: existingPeminjaman.jumlahPinjam
-          }
-        }
-      });
-    } else if (status === 'DIKEMBALIKAN' && existingPeminjaman.status === 'APPROVED') {
-      // Tambah stok saat dikembalikan
-      await prisma.alat.update({
-        where: { id: existingPeminjaman.alatId },
-        data: {
-          jumlahTersedia: {
-            increment: existingPeminjaman.jumlahPinjam
-          }
-        }
-      });
-    } else if (status === 'REJECTED' && existingPeminjaman.status === 'APPROVED') {
-      // Kembalikan stok jika reject setelah approve
-      await prisma.alat.update({
-        where: { id: existingPeminjaman.alatId },
-        data: {
-          jumlahTersedia: {
-            increment: existingPeminjaman.jumlahPinjam
-          }
-        }
-      });
+    // Validation
+    if (!status || !Object.values(StatusPeminjamanAlat).includes(status)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid status. Must be PENDING, APPROVED, REJECTED, or DIKEMBALIKAN',
+        },
+        { status: 400 }
+      );
     }
+
+    // Get current peminjaman
+    const currentPeminjaman = await PeminjamanAlatRepository.findById(params.id);
+    if (!currentPeminjaman) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Peminjaman not found',
+        },
+        { status: 404 }
+      );
+    }
+
+    const updateData: any = {
+      status,
+    };
+
+    // Handle status change logic
+    if (status === StatusPeminjamanAlat.APPROVED) {
+      // Reduce available quantity when approved
+      const alat = await AlatRepository.findById(currentPeminjaman.alatId);
+      if (alat) {
+        await AlatRepository.update(currentPeminjaman.alatId, {
+          jumlahTersedia: alat.jumlahTersedia - currentPeminjaman.jumlahPinjam,
+        });
+      }
+      
+      if (approvedBy) {
+        updateData.approvedBy = approvedBy;
+        updateData.approvedAt = new Date();
+      }
+    } else if (status === StatusPeminjamanAlat.DIKEMBALIKAN) {
+      // Return quantity when returned
+      const alat = await AlatRepository.findById(currentPeminjaman.alatId);
+      if (alat) {
+        await AlatRepository.update(currentPeminjaman.alatId, {
+          jumlahTersedia: alat.jumlahTersedia + currentPeminjaman.jumlahPinjam,
+        });
+      }
+      
+      updateData.dikembalikanAt = new Date();
+    } else if (status === StatusPeminjamanAlat.REJECTED) {
+      if (approvedBy) {
+        updateData.approvedBy = approvedBy;
+        updateData.approvedAt = new Date();
+      }
+    }
+
+    if (keterangan) {
+      updateData.keterangan = keterangan;
+    }
+
+    const updatedPeminjaman = await PeminjamanAlatRepository.update(params.id, updateData);
 
     return NextResponse.json({
       success: true,
-      data: peminjamanAlat
+      message: 'Peminjaman updated successfully',
+      data: updatedPeminjaman,
     });
-
   } catch (error) {
-    console.error('Update peminjaman alat error:', error);
+    console.error('Error updating peminjaman:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        success: false,
+        error: 'Failed to update peminjaman',
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE - Delete peminjaman
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const params = await context.params;
+    await PeminjamanAlatRepository.delete(params.id);
+
+    return NextResponse.json({
+      success: true,
+      message: 'Peminjaman deleted successfully',
+    });
+  } catch (error) {
+    console.error('Error deleting peminjaman:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to delete peminjaman',
+      },
       { status: 500 }
     );
   }

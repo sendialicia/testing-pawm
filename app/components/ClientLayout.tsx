@@ -14,7 +14,7 @@ interface ClientLayoutProps {
 }
 
 interface User {
-  id: number;
+  id: string;
   email: string;
   role: string;
 }
@@ -99,7 +99,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
   }
 
   return (
-    <div className="relative overflow-hidden flex flex-col min-h-screen">
+    <>
       {/* Main content with slide animation */}
       <motion.div
         animate={{ 
@@ -111,7 +111,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
           stiffness: 300,
           mass: 0.8
         }}
-        className="flex flex-col flex-1 w-full relative z-10"
+        className="min-h-screen flex flex-col w-full"
         style={{
           boxShadow: showLogin ? "2px 0 10px rgba(0,0,0,0.1)" : "none"
         }}
@@ -136,6 +136,6 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
       )}
 
       <LoginPanel isOpen={showLogin} onClose={handleLoginClose} onLoginSuccess={handleLoginSuccess} />
-    </div>
+    </>
   );
 }

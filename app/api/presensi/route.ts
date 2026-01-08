@@ -1,171 +1,109 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@/app/generated/prisma/client';
+import { PresensiRepository } from '@/lib/firebase-repositories';
+import { StatusPresensi } from '@/lib/firebase-collections';
 
-const prisma = new PrismaClient();
-
-// GET - Ambil presensi untuk user tertentu di modul tertentu
+// GET - Get all presensi or filter by userId/modulId/status
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
     const modulId = searchParams.get('modulId');
+    const status = searchParams.get('status') as StatusPresensi | null;
 
-    if (!userId || !modulId) {
-      return NextResponse.json(
-        { error: 'userId dan modulId required' },
-        { status: 400 }
-      );
+    let presensiList;
+
+    if (userId && modulId) {
+      // Get specific user's presensi for a module
+      presensiList = await PresensiRepository.findByUserIdAndModulId(userId, modulId);
+      presensiList = presensiList ? [presensiList] : [];
+    } else if (userId) {
+      presensiList = await PresensiRepository.findByUserId(userId);
+    } else if (modulId) {
+      presensiList = await PresensiRepository.findByModulId(modulId);
+    } else {
+      presensiList = await PresensiRepository.findAll();
     }
 
-    const presensi = await prisma.presensi.findUnique({
-      where: {
-        userId_modulId: {
-          userId: parseInt(userId),
-          modulId: modulId
-        }
-      },
-      include: {
-        user: {
-          select: {
-            email: true,
-            role: true
-          }
-        }
-      }
-    });
+    // Filter by status if provided
+    if (status && Array.isArray(presensiList)) {
+      presensiList = presensiList.filter((presensi: any) => presensi.status === status);
+    }
 
-    return NextResponse.json({ presensi });
+    return NextResponse.json({
+      success: true,
+      data: presensiList,
+    });
   } catch (error) {
-    console.error('Get presensi error:', error);
+    console.error('Error fetching presensi:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        success: false,
+        error: 'Failed to fetch presensi',
+      },
       { status: 500 }
     );
   }
 }
 
-// POST - Submit presensi
+// POST - Submit presensi (praktikan)
 export async function POST(request: NextRequest) {
   try {
-    const data = await request.json();
-    const { userId, modulId, nama, nim, kelompok, userRole } = data;
+    const body = await request.json();
+    const {
+      userId,
+      modulId,
+      nama,
+      nim,
+      kelompok,
+    } = body;
 
-    console.log('Submit presensi:', { userId, modulId, nama, nim, kelompok, userRole });
-
-    // Validasi required fields
+    // Validation
     if (!userId || !modulId || !nama || !nim || !kelompok) {
       return NextResponse.json(
-        { error: 'Semua field wajib diisi' },
+        {
+          success: false,
+          error: 'All fields are required: userId, modulId, nama, nim, kelompok',
+        },
         { status: 400 }
       );
     }
 
-    // Check apakah sudah pernah presensi
-    const existing = await prisma.presensi.findUnique({
-      where: {
-        userId_modulId: {
-          userId: parseInt(userId),
-          modulId: modulId
-        }
-      }
-    });
-
-    if (existing) {
+    // Check if presensi already exists for this user and module
+    const existingPresensi = await PresensiRepository.findByUserIdAndModulId(userId, modulId);
+    
+    if (existingPresensi) {
       return NextResponse.json(
-        { error: 'Presensi sudah pernah dilakukan untuk modul ini' },
+        {
+          success: false,
+          error: 'Anda sudah melakukan presensi untuk modul ini',
+        },
         { status: 400 }
       );
     }
 
-    // Submit presensi
-    const presensi = await prisma.presensi.create({
-      data: {
-        userId: parseInt(userId),
-        modulId,
-        nama,
-        nim,
-        kelompok,
-        status: 'HADIR',
-        waktuPresensi: new Date()
-      },
-      include: {
-        user: {
-          select: {
-            email: true,
-            role: true
-          }
-        }
-      }
+    // Create new presensi with HADIR status
+    const newPresensi = await PresensiRepository.create({
+      userId,
+      modulId,
+      nama,
+      nim,
+      kelompok,
+      status: StatusPresensi.HADIR,
+      waktuPresensi: new Date(),
     });
 
-    console.log('Presensi submitted:', presensi);
-
-    return NextResponse.json({ 
-      message: 'Presensi berhasil disubmit',
-      presensi 
-    });
-
+    return NextResponse.json({
+      success: true,
+      message: 'Presensi berhasil dicatat',
+      data: newPresensi,
+    }, { status: 201 });
   } catch (error) {
-    console.error('Submit presensi error:', error);
+    console.error('Error creating presensi:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-// PUT - Update presensi (untuk asisten)
-export async function PUT(request: NextRequest) {
-  try {
-    const data = await request.json();
-    const { userId, modulId, status, keterangan, userRole } = data;
-
-    if (!userId || !modulId || !status) {
-      return NextResponse.json(
-        { error: 'userId, modulId, dan status required' },
-        { status: 400 }
-      );
-    }
-
-    // Hanya asisten yang bisa update presensi
-    if (userRole !== 'ASISTEN') {
-      return NextResponse.json(
-        { error: 'Hanya asisten yang dapat mengubah status presensi' },
-        { status: 403 }
-      );
-    }
-
-    const presensi = await prisma.presensi.update({
-      where: {
-        userId_modulId: {
-          userId: parseInt(userId),
-          modulId: modulId
-        }
+      {
+        success: false,
+        error: 'Failed to create presensi',
       },
-      data: {
-        status,
-        keterangan,
-        updatedAt: new Date()
-      },
-      include: {
-        user: {
-          select: {
-            email: true,
-            role: true
-          }
-        }
-      }
-    });
-
-    return NextResponse.json({ 
-      message: 'Status presensi berhasil diupdate',
-      presensi 
-    });
-
-  } catch (error) {
-    console.error('Update presensi error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
       { status: 500 }
     );
   }

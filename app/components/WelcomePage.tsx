@@ -9,7 +9,7 @@ import Footer from './Footer';
 
 interface WelcomePageProps {
   user: {
-    id: number;
+    id: string;
     email: string;
     role: string;
   };

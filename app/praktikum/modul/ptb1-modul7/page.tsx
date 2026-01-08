@@ -1,14 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronDown, Download, Users, Target, Book, Wrench, ClipboardList, FileText, CheckCircle, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
+import AsistenTugas from '@/app/components/AsistenTugas';
+import AsistenPresensi from '@/app/components/AsistenPresensi';
 
 export default function PTB1Modul7() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('deskripsi');
+  const [userRole, setUserRole] = useState<string>('');
   
   // Tugas Awal states
   const [tugasAwalData, setTugasAwalData] = useState({
@@ -36,6 +39,15 @@ export default function PTB1Modul7() {
     modulId: "ptb1-modul7"
   };
 
+  // Get user role from localStorage
+  useEffect(() => {
+    const userData = localStorage.getItem('biomedis_user');
+    if (userData) {
+      const user = JSON.parse(userData);
+      setUserRole(user.role || '');
+    }
+  }, []);
+
   // Handle tugas awal submission
   const handleTugasAwalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,7 +55,7 @@ export default function PTB1Modul7() {
 
     try {
       // Get user data from localStorage
-      const userData = localStorage.getItem('user');
+      const userData = localStorage.getItem('biomedis_user');
       if (!userData) {
         alert('Silakan login terlebih dahulu');
         return;
@@ -94,7 +106,7 @@ export default function PTB1Modul7() {
     setPresensiLoading(true);
 
     try {
-      const userData = localStorage.getItem('user');
+      const userData = localStorage.getItem('biomedis_user');
       if (!userData) {
         alert('Silakan login terlebih dahulu');
         return;
@@ -339,6 +351,9 @@ export default function PTB1Modul7() {
                 </div>
               )}
             </div>
+
+            {/* Komponen untuk Asisten - Manajemen Tugas */}
+            <AsistenTugas modulId={moduleInfo.modulId} userRole={userRole} />
           </motion.div>
         );
 
@@ -349,122 +364,129 @@ export default function PTB1Modul7() {
             animate={{ opacity: 1, y: 0 }}
           >
             <h2 className="text-3xl md:text-4xl font-bold text-[#E64A19] mb-8">Presensi Praktikum</h2>
-            <div className="bg-white rounded-xl p-8 shadow-lg border-l-4 border-[#E64A19]">
-              <div className="flex items-start space-x-6 mb-8">
-                <div className="w-16 h-16 bg-green-500 rounded-lg flex items-center justify-center shrink-0">
-                  <Users className="w-8 h-8 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-gray-800 mb-4">
-                    Absensi PTB1 - Modul 7
-                  </h3>
-                  <p className="text-gray-600 text-lg leading-relaxed">
-                    Lakukan presensi untuk konfirmasi kehadiran praktikum.
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-8">
-                <h4 className="font-bold text-yellow-800 mb-4 text-lg">⚠️ Penting:</h4>
-                <ul className="text-yellow-700 space-y-2 text-base">
-                  <li>• Presensi hanya dapat dilakukan pada saat praktikum</li>
-                  <li>• Pastikan Anda sudah mengerjakan tugas awal</li>
-                  <li>• Terlambat lebih dari 15 menit tidak dapat mengikuti praktikum</li>
-                </ul>
-              </div>
-
-              {!presensiSubmitted ? (
-                <form onSubmit={handlePresensiSubmit} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="border border-gray-200 rounded-lg p-6">
-                      <label className="block text-base font-semibold text-gray-700 mb-3">
-                        Nama Lengkap *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={presensiData.nama}
-                        onChange={(e) => setPresensiData(prev => ({ ...prev, nama: e.target.value }))}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-                        placeholder="Masukkan nama lengkap"
-                      />
-                    </div>
-                    
-                    <div className="border border-gray-200 rounded-lg p-6">
-                      <label className="block text-base font-semibold text-gray-700 mb-3">
-                        NIM *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={presensiData.nim}
-                        onChange={(e) => setPresensiData(prev => ({ ...prev, nim: e.target.value }))}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-                        placeholder="Masukkan NIM"
-                      />
-                    </div>
+            
+            {/* Form presensi hanya untuk praktikan */}
+            {userRole === 'PRAKTIKAN' && (
+              <div className="bg-white rounded-xl p-8 shadow-lg border-l-4 border-[#E64A19] mb-6">
+                <div className="flex items-start space-x-6 mb-8">
+                  <div className="w-16 h-16 bg-green-500 rounded-lg flex items-center justify-center shrink-0">
+                    <Users className="w-8 h-8 text-white" />
                   </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-800 mb-4">
+                      Absensi PTB1 - Modul 7
+                    </h3>
+                    <p className="text-gray-600 text-lg leading-relaxed">
+                      Lakukan presensi untuk konfirmasi kehadiran praktikum.
+                    </p>
+                  </div>
+                </div>
 
-                  <div className="border border-gray-200 rounded-lg p-6">
-                    <label className="block text-base font-semibold text-gray-700 mb-3">
-                      Kelompok Praktikum *
-                    </label>
-                    <select 
-                      required
-                      value={presensiData.kelompok}
-                      onChange={(e) => setPresensiData(prev => ({ ...prev, kelompok: e.target.value }))}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-8">
+                  <h4 className="font-bold text-yellow-800 mb-4 text-lg">⚠️ Penting:</h4>
+                  <ul className="text-yellow-700 space-y-2 text-base">
+                    <li>• Presensi hanya dapat dilakukan pada saat praktikum</li>
+                    <li>• Pastikan Anda sudah mengerjakan tugas awal</li>
+                    <li>• Terlambat lebih dari 15 menit tidak dapat mengikuti praktikum</li>
+                  </ul>
+                </div>
+
+                {!presensiSubmitted ? (
+                  <form onSubmit={handlePresensiSubmit} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="border border-gray-200 rounded-lg p-6">
+                        <label className="block text-base font-semibold text-gray-700 mb-3">
+                          Nama Lengkap *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={presensiData.nama}
+                          onChange={(e) => setPresensiData(prev => ({ ...prev, nama: e.target.value }))}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
+                          placeholder="Masukkan nama lengkap"
+                        />
+                      </div>
+                      
+                      <div className="border border-gray-200 rounded-lg p-6">
+                        <label className="block text-base font-semibold text-gray-700 mb-3">
+                          NIM *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={presensiData.nim}
+                          onChange={(e) => setPresensiData(prev => ({ ...prev, nim: e.target.value }))}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
+                          placeholder="Masukkan NIM"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="border border-gray-200 rounded-lg p-6">
+                      <label className="block text-base font-semibold text-gray-700 mb-3">
+                        Kelompok Praktikum *
+                      </label>
+                      <select 
+                        required
+                        value={presensiData.kelompok}
+                        onChange={(e) => setPresensiData(prev => ({ ...prev, kelompok: e.target.value }))}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
+                      >
+                        <option value="">Pilih kelompok</option>
+                        <option value="A">Kelompok A</option>
+                        <option value="B">Kelompok B</option>
+                        <option value="C">Kelompok C</option>
+                        <option value="D">Kelompok D</option>
+                      </select>
+                    </div>
+
+                    <div className="border border-gray-200 rounded-lg p-6">
+                      <label className="flex items-center space-x-3">
+                        <input 
+                          type="checkbox" 
+                          checked={presensiData.confirm}
+                          onChange={(e) => setPresensiData(prev => ({ ...prev, confirm: e.target.checked }))}
+                          className="w-5 h-5 text-blue-600" 
+                        />
+                        <span className="text-base text-gray-700">
+                          Saya confirm telah mengerjakan tugas awal dan siap mengikuti praktikum *
+                        </span>
+                      </label>
+                    </div>
+
+                    <button 
+                      type="submit"
+                      disabled={presensiLoading}
+                      className="w-full bg-linear-to-r from-green-500 to-green-600 text-white py-4 px-8 rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-300 flex items-center justify-center space-x-3 text-lg font-semibold shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <option value="">Pilih kelompok</option>
-                      <option value="A">Kelompok A</option>
-                      <option value="B">Kelompok B</option>
-                      <option value="C">Kelompok C</option>
-                      <option value="D">Kelompok D</option>
-                    </select>
+                      {presensiLoading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                          <span>Submitting...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-6 h-6" />
+                          <span>Submit Presensi</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <CheckCircle className="w-8 h-8 text-white" />
+                    </div>
+                    <h4 className="text-xl font-bold text-green-800 mb-2">Presensi Sudah Disubmit</h4>
+                    <p className="text-green-600">Terima kasih! Presensi Anda sudah berhasil dicatat.</p>
                   </div>
+                )}
+              </div>
+            )}
 
-                  <div className="border border-gray-200 rounded-lg p-6">
-                    <label className="flex items-center space-x-3">
-                      <input 
-                        type="checkbox" 
-                        checked={presensiData.confirm}
-                        onChange={(e) => setPresensiData(prev => ({ ...prev, confirm: e.target.checked }))}
-                        className="w-5 h-5 text-blue-600" 
-                      />
-                      <span className="text-base text-gray-700">
-                        Saya confirm telah mengerjakan tugas awal dan siap mengikuti praktikum *
-                      </span>
-                    </label>
-                  </div>
-
-                  <button 
-                    type="submit"
-                    disabled={presensiLoading}
-                    className="w-full bg-linear-to-r from-green-500 to-green-600 text-white py-4 px-8 rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-300 flex items-center justify-center space-x-3 text-lg font-semibold shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {presensiLoading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                        <span>Submitting...</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle className="w-6 h-6" />
-                        <span>Submit Presensi</span>
-                      </>
-                    )}
-                  </button>
-                </form>
-              ) : (
-                <div className="text-center py-8">
-                  <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <CheckCircle className="w-8 h-8 text-white" />
-                  </div>
-                  <h4 className="text-xl font-bold text-green-800 mb-2">Presensi Sudah Disubmit</h4>
-                  <p className="text-green-600">Terima kasih! Presensi Anda sudah berhasil dicatat.</p>
-                </div>
-              )}
-            </div>
+            {/* Komponen untuk Asisten - Manajemen Presensi */}
+            <AsistenPresensi modulId={moduleInfo.modulId} userRole={userRole} />
           </motion.div>
         );
 

@@ -1,185 +1,112 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@/app/generated/prisma/client';
+import { TugasAwalRepository } from '@/lib/firebase-repositories';
+import { StatusTugasAwal } from '@/lib/firebase-collections';
 
-const prisma = new PrismaClient();
-
-// GET - Ambil status tugas awal untuk user tertentu di modul tertentu
+// GET - Get all tugas awal or filter by userId/modulId/status
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
     const modulId = searchParams.get('modulId');
+    const status = searchParams.get('status') as StatusTugasAwal | null;
 
-    if (!userId || !modulId) {
-      return NextResponse.json(
-        { error: 'userId dan modulId required' },
-        { status: 400 }
-      );
+    let tugasList;
+
+    if (userId && modulId) {
+      // Get specific user's tugas for a module
+      tugasList = await TugasAwalRepository.findByUserIdAndModulId(userId, modulId);
+      tugasList = tugasList ? [tugasList] : [];
+    } else if (userId) {
+      tugasList = await TugasAwalRepository.findByUserId(userId);
+    } else {
+      tugasList = await TugasAwalRepository.findAll();
     }
 
-    const tugasAwal = await prisma.tugasAwal.findUnique({
-      where: {
-        userId_modulId: {
-          userId: parseInt(userId),
-          modulId: modulId
-        }
-      },
-      include: {
-        user: {
-          select: {
-            email: true,
-            role: true
-          }
-        }
-      }
-    });
+    // Filter by status if provided
+    if (status && Array.isArray(tugasList)) {
+      tugasList = tugasList.filter((tugas: any) => tugas.status === status);
+    }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
-      data: tugasAwal 
+      data: tugasList,
     });
   } catch (error) {
-    console.error('Get tugas awal error:', error);
+    console.error('Error fetching tugas awal:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        success: false,
+        error: 'Failed to fetch tugas awal',
+      },
       { status: 500 }
     );
   }
 }
 
-// POST - Submit tugas awal
+// POST - Submit tugas awal (praktikan)
 export async function POST(request: NextRequest) {
   try {
-    const data = await request.json();
-    const { userId, modulId, nama, nim, linkTugas, userRole } = data;
+    const body = await request.json();
+    const {
+      userId,
+      modulId,
+      nama,
+      nim,
+      linkTugas,
+    } = body;
 
-    console.log('Submit tugas awal:', { userId, modulId, nama, nim, userRole });
-
-    // Validasi required fields
+    // Validation
     if (!userId || !modulId || !nama || !nim || !linkTugas) {
       return NextResponse.json(
-        { error: 'Semua field wajib diisi' },
+        {
+          success: false,
+          error: 'All fields are required: userId, modulId, nama, nim, linkTugas',
+        },
         { status: 400 }
       );
     }
 
-    // Validasi URL
-    try {
-      new URL(linkTugas);
-    } catch {
-      return NextResponse.json(
-        { error: 'Format link tidak valid' },
-        { status: 400 }
-      );
-    }
+    // Check if tugas already exists for this user and module
+    const existingTugas = await TugasAwalRepository.findByUserIdAndModulId(userId, modulId);
+    
+    if (existingTugas) {
+      // Update existing tugas
+      const updatedTugas = await TugasAwalRepository.update(existingTugas.id, {
+        linkTugas,
+        status: StatusTugasAwal.SUDAH_SUBMIT,
+        submitAt: new Date(),
+      });
 
-    // Check apakah sudah pernah submit
-    const existing = await prisma.tugasAwal.findUnique({
-      where: {
-        userId_modulId: {
-          userId: parseInt(userId),
-          modulId: modulId
-        }
-      }
-    });
-
-    if (existing) {
-      return NextResponse.json(
-        { error: 'Tugas awal sudah pernah disubmit untuk modul ini' },
-        { status: 400 }
-      );
-    }
-
-    // Submit tugas awal
-    const tugasAwal = await prisma.tugasAwal.create({
-      data: {
-        userId: parseInt(userId),
+      return NextResponse.json({
+        success: true,
+        message: 'Tugas awal updated successfully',
+        data: updatedTugas,
+      });
+    } else {
+      // Create new tugas
+      const newTugas = await TugasAwalRepository.create({
+        userId,
         modulId,
         nama,
         nim,
         linkTugas,
-        status: 'SUDAH_SUBMIT',
-        submitAt: new Date()
-      },
-      include: {
-        user: {
-          select: {
-            email: true,
-            role: true
-          }
-        }
-      }
-    });
+        status: StatusTugasAwal.SUDAH_SUBMIT,
+        submitAt: new Date(),
+      });
 
-    console.log('Tugas awal submitted:', tugasAwal);
-
-    return NextResponse.json({ 
-      message: 'Tugas awal berhasil disubmit',
-      tugasAwal 
-    });
-
-  } catch (error) {
-    console.error('Submit tugas awal error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-// PUT - Update tugas awal (jika diperlukan)
-export async function PUT(request: NextRequest) {
-  try {
-    const data = await request.json();
-    const { userId, modulId, linkTugas, userRole } = data;
-
-    if (!userId || !modulId || !linkTugas) {
-      return NextResponse.json(
-        { error: 'userId, modulId, dan linkTugas required' },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        success: true,
+        message: 'Tugas awal submitted successfully',
+        data: newTugas,
+      }, { status: 201 });
     }
-
-    // Validasi URL
-    try {
-      new URL(linkTugas);
-    } catch {
-      return NextResponse.json(
-        { error: 'Format link tidak valid' },
-        { status: 400 }
-      );
-    }
-
-    const tugasAwal = await prisma.tugasAwal.update({
-      where: {
-        userId_modulId: {
-          userId: parseInt(userId),
-          modulId: modulId
-        }
-      },
-      data: {
-        linkTugas,
-        updatedAt: new Date()
-      },
-      include: {
-        user: {
-          select: {
-            email: true,
-            role: true
-          }
-        }
-      }
-    });
-
-    return NextResponse.json({ 
-      message: 'Tugas awal berhasil diupdate',
-      tugasAwal 
-    });
-
   } catch (error) {
-    console.error('Update tugas awal error:', error);
+    console.error('Error submitting tugas awal:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        success: false,
+        error: 'Failed to submit tugas awal',
+      },
       { status: 500 }
     );
   }

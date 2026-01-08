@@ -4,6 +4,8 @@ interface TugasAwal {
   id: string;
   userId: string;
   modulId: string;
+  nama: string;
+  nim: string;
   kelompok: string;
   linkTugas: string;
   nilai?: number;
@@ -33,11 +35,25 @@ const AsistenTugas: React.FC<AsistenTugasProps> = ({ modulId, userRole }) => {
   const fetchTugasList = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/asisten/tugas-awal?modulId=${modulId}&userRole=${userRole}`);
+      // Get all tugas for this module
+      const response = await fetch(`/api/tugas-awal`);
       const data = await response.json();
 
-      if (data.success) {
-        setTugasList(data.data);
+      if (data.success && Array.isArray(data.data)) {
+        // Filter by modulId and add user data from tugas fields
+        const filteredTugas = data.data
+          .filter((tugas: any) => tugas.modulId === modulId)
+          .map((tugas: any) => ({
+            ...tugas,
+            user: {
+              email: tugas.email || `${tugas.nama} (${tugas.nim})`,
+              id: tugas.userId,
+              role: 'PRAKTIKAN'
+            }
+          }));
+        
+        setTugasList(filteredTugas);
+        setError('');
       } else {
         setError(data.error || 'Failed to fetch tugas list');
       }
@@ -47,21 +63,24 @@ const AsistenTugas: React.FC<AsistenTugasProps> = ({ modulId, userRole }) => {
     } finally {
       setLoading(false);
     }
-  }, [modulId, userRole]);
+  }, [modulId]);
 
   // Submit nilai
   const handleSubmitNilai = async (tugasId: string) => {
     try {
-      const response = await fetch('/api/asisten/tugas-awal', {
-        method: 'PUT',
+      // Get user data for nilaiBy
+      const userData = localStorage.getItem('biomedis_user');
+      const user = userData ? JSON.parse(userData) : null;
+      
+      const response = await fetch(`/api/tugas-awal/${tugasId}`, {
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          tugasAwalId: tugasId,
           nilai,
-          userRole,
-          nilaiBy: userRole
+          nilaiBy: user?.email || 'asisten',
+          keterangan: ''
         })
       });
 
@@ -71,7 +90,7 @@ const AsistenTugas: React.FC<AsistenTugasProps> = ({ modulId, userRole }) => {
         // Update local state
         setTugasList(prev => prev.map(tugas => 
           tugas.id === tugasId 
-            ? { ...tugas, nilai, nilaiAt: new Date(), nilaiBy: userRole }
+            ? { ...tugas, nilai, nilaiAt: new Date(), nilaiBy: user?.email }
             : tugas
         ));
         setGradingTugas(null);
@@ -138,10 +157,10 @@ const AsistenTugas: React.FC<AsistenTugasProps> = ({ modulId, userRole }) => {
               <div className="flex justify-between items-start mb-2">
                 <div>
                   <p className="font-medium text-gray-800">
-                    📧 {tugas.user.email}
+                    👤 {tugas.nama}
                   </p>
                   <p className="text-sm text-gray-600">
-                    👥 Kelompok: {tugas.kelompok}
+                    🆔 NIM: {tugas.nim}
                   </p>
                   <p className="text-xs text-gray-500">
                     📅 Dikumpulkan: {new Date(tugas.createdAt).toLocaleString('id-ID')}

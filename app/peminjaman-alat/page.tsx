@@ -24,7 +24,7 @@ interface Alat {
 interface PeminjamanAlat {
   id: number;
   alatId: number;
-  userId: number;
+  userId: string;
   nama: string;
   nim: string;
   email: string;
@@ -56,7 +56,7 @@ export default function PeminjamanAlatPage() {
   const [formData, setFormData] = useState({
     nama: "",
     nim: "",
-    alatId: 0,
+    alatId: "",
     jumlah: 1,
     tanggalPinjam: "",
     tanggalKembali: "",
@@ -86,32 +86,37 @@ export default function PeminjamanAlatPage() {
     try {
       setAlatLoading(true);
       
-      // Fetch alat
+      // Fetch alat first
       const alatResponse = await fetch('/api/alat');
+      let alatMap = new Map();
+      
       if (alatResponse.ok) {
         const alatData = await alatResponse.json();
-        setAlat(alatData);
+        if (alatData.success && Array.isArray(alatData.data)) {
+          setAlat(alatData.data);
+          // Create map for quick lookup
+          alatData.data.forEach((item: any) => {
+            alatMap.set(item.id, item);
+          });
+        }
       }
       
-      // Fetch peminjaman alat
-      let peminjamanUrl = '/api/peminjaman-alat';
-      
-      // Jika user adalah praktikan, hanya tampilkan peminjaman mereka sendiri
-      if (user && user.role !== 'ASISTEN') {
-        peminjamanUrl += `?userId=${user.id}`;
-      }
+      // Fetch peminjaman alat - asisten gets all, praktikan gets only their own
+      const peminjamanUrl = user.role === 'ASISTEN' 
+        ? '/api/peminjaman-alat' 
+        : `/api/peminjaman-alat?userId=${user.id}`;
       
       const peminjamanResponse = await fetch(peminjamanUrl);
       if (peminjamanResponse.ok) {
         const peminjamanData = await peminjamanResponse.json();
-        // Handle new API response format
         if (peminjamanData.success && Array.isArray(peminjamanData.data)) {
-          setPeminjamanAlat(peminjamanData.data);
-        } else if (Array.isArray(peminjamanData)) {
-          // Fallback for old format
-          setPeminjamanAlat(peminjamanData);
+          // Populate alat data into peminjaman
+          const peminjamanWithAlat = peminjamanData.data.map((item: any) => ({
+            ...item,
+            alat: alatMap.get(item.alatId) || { nama: 'Unknown', deskripsi: '', gambar: '', jumlahTotal: 0, jumlahTersedia: 0 }
+          }));
+          setPeminjamanAlat(peminjamanWithAlat);
         } else {
-          console.error('Unexpected response format:', peminjamanData);
           setPeminjamanAlat([]);
         }
       }
@@ -134,7 +139,7 @@ export default function PeminjamanAlatPage() {
     try {
       console.log('Approving peminjaman with ID:', peminjamanId);
       const response = await fetch(`/api/peminjaman-alat/${peminjamanId}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -166,7 +171,7 @@ export default function PeminjamanAlatPage() {
     try {
       console.log('Rejecting peminjaman with ID:', peminjamanId);
       const response = await fetch(`/api/peminjaman-alat/${peminjamanId}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -212,21 +217,24 @@ export default function PeminjamanAlatPage() {
           userId: user.id,
           nama: formData.nama,
           nim: formData.nim,
+          email: user.email,
           alatId: formData.alatId,
-          jumlah: formData.jumlah,
+          jumlahPinjam: formData.jumlah,
           tanggalPinjam: formData.tanggalPinjam,
           tanggalKembali: formData.tanggalKembali,
-          tujuanPenggunaan: formData.keperluan
+          keperluan: formData.keperluan
         })
       });
 
-      if (response.ok) {
+      const data = await response.json();
+
+      if (response.ok && data.success) {
         alert("Form peminjaman alat berhasil dikirim!");
         // Reset form
         setFormData({
           nama: "",
           nim: "",
-          alatId: 0,
+          alatId: "",
           jumlah: 1,
           tanggalPinjam: "",
           tanggalKembali: "",
@@ -237,8 +245,7 @@ export default function PeminjamanAlatPage() {
         // Refresh data
         fetchData();
       } else {
-        const errorData = await response.json();
-        alert("Error: " + errorData.error);
+        alert("Error: " + (data.error || 'Unknown error'));
       }
     } catch (error) {
       console.error('Error submitting form:', error);
@@ -250,8 +257,8 @@ export default function PeminjamanAlatPage() {
     const { name, value } = e.target;
     setFormData({
       ...formData,
-      [name]: (name === 'jumlah' || name === 'alatId')  
-        ? parseInt(value) || 0 
+      [name]: name === 'jumlah' 
+        ? (parseInt(value) || 1)
         : value
     });
   };
@@ -653,7 +660,7 @@ export default function PeminjamanAlatPage() {
                   </label>
                   <select
                     name="alatId"
-                    value={formData.alatId || ''}
+                    value={formData.alatId}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#E64A19] focus:border-transparent"
                     required
@@ -790,7 +797,7 @@ export default function PeminjamanAlatPage() {
                                   <span className="font-medium">Email:</span> {item.email}
                                 </div>
                                 <div>
-                                  <span className="font-medium">Alat:</span> {item.alat.nama}
+                                  <span className="font-medium">Alat:</span> {item.alat?.nama || 'Unknown'}
                                 </div>
                                 <div>
                                   <span className="font-medium">Jumlah:</span> {item.jumlahPinjam}

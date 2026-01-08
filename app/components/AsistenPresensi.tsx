@@ -1,26 +1,23 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
+interface User {
+  id: string;
+  email: string;
+  nim: string;
+  role: string;
+}
+
 interface Presensi {
   id: string;
   userId: string;
   modulId: string;
+  nama: string;
+  nim: string;
   kelompok: string;
   status: 'HADIR' | 'TIDAK_HADIR' | 'TERLAMBAT';
   waktuPresensi: Date;
   keterangan?: string;
   createdAt: Date;
-  user: {
-    id: string;
-    email: string;
-    role: string;
-  };
-}
-
-interface StatistikKelompok {
-  total: number;
-  hadir: number;
-  terlambat: number;
-  tidakHadir: number;
 }
 
 interface AsistenPresensiProps {
@@ -30,106 +27,72 @@ interface AsistenPresensiProps {
 
 const AsistenPresensi: React.FC<AsistenPresensiProps> = ({ modulId, userRole }) => {
   const [presensiList, setPresensiList] = useState<Presensi[]>([]);
-  const [statistik, setStatistik] = useState<Record<string, StatistikKelompok>>({});
+  const [allPraktikan, setAllPraktikan] = useState<User[]>([]);
+  const [belumPresensi, setBelumPresensi] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [editingPresensi, setEditingPresensi] = useState<string | null>(null);
-  const [newStatus, setNewStatus] = useState<'HADIR' | 'TIDAK_HADIR' | 'TERLAMBAT'>('HADIR');
-  const [keterangan, setKeterangan] = useState('');
+  const [activeTab, setActiveTab] = useState<'hadir' | 'belum'>('hadir');
 
-  // Fetch data presensi
-  const fetchPresensiList = useCallback(async () => {
+  // Fetch data presensi dan praktikan
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/asisten/presensi?modulId=${modulId}&userRole=${userRole}`);
-      const data = await response.json();
+      setError('');
 
-      if (data.success) {
-        setPresensiList(data.data);
-        setStatistik(data.statistik || {});
-      } else {
-        setError(data.error || 'Failed to fetch presensi list');
+      // Fetch presensi for this module
+      const presensiResponse = await fetch(`/api/presensi?modulId=${modulId}`);
+      const presensiData = await presensiResponse.json();
+
+      if (!presensiData.success) {
+        throw new Error(presensiData.error || 'Failed to fetch presensi');
       }
-    } catch (err) {
-      setError('Network error');
-      console.error('Fetch presensi error:', err);
+
+      const presensiList = presensiData.data || [];
+      setPresensiList(presensiList);
+
+      // Fetch all praktikan users
+      const usersResponse = await fetch('/api/auth/users?role=PRAKTIKAN');
+      const usersData = await usersResponse.json();
+
+      if (!usersData.success) {
+        throw new Error(usersData.error || 'Failed to fetch users');
+      }
+
+      const praktikanList = usersData.data || [];
+      setAllPraktikan(praktikanList);
+
+      // Calculate who hasn't done presensi
+      const presensiUserIds = new Set(presensiList.map((p: Presensi) => p.userId));
+      const belumPresensiList = praktikanList.filter((user: User) => !presensiUserIds.has(user.id));
+      setBelumPresensi(belumPresensiList);
+
+    } catch (err: any) {
+      setError(err.message || 'Network error');
+      console.error('Fetch data error:', err);
     } finally {
       setLoading(false);
     }
-  }, [modulId, userRole]);
-
-  // Update status presensi
-  const handleUpdateStatus = async (presensiId: string) => {
-    try {
-      const response = await fetch('/api/asisten/presensi', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          presensiId,
-          status: newStatus,
-          keterangan,
-          userRole
-        })
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        // Update local state
-        setPresensiList(prev => prev.map(presensi => 
-          presensi.id === presensiId 
-            ? { ...presensi, status: newStatus, keterangan }
-            : presensi
-        ));
-        setEditingPresensi(null);
-        setKeterangan('');
-        alert('Status presensi berhasil diupdate!');
-        // Refresh untuk update statistik
-        fetchPresensiList();
-      } else {
-        alert(data.error || 'Gagal mengupdate status presensi');
-      }
-    } catch (err) {
-      alert('Network error');
-      console.error('Update presensi error:', err);
-    }
-  };
-
-  // Get status badge color
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'HADIR':
-        return 'bg-green-100 text-green-800';
-      case 'TERLAMBAT':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'TIDAK_HADIR':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  // Get status icon
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'HADIR':
-        return '✅';
-      case 'TERLAMBAT':
-        return '⚠️';
-      case 'TIDAK_HADIR':
-        return '❌';
-      default:
-        return '❓';
-    }
-  };
+  }, [modulId]);
 
   useEffect(() => {
     if (userRole === 'ASISTEN') {
-      fetchPresensiList();
+      fetchData();
     }
-  }, [userRole, fetchPresensiList]);
+  }, [modulId, userRole, fetchData]);
+
+  // Get status badge
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'HADIR':
+        return <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-medium">✅ Hadir</span>;
+      case 'TERLAMBAT':
+        return <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-medium">⏰ Terlambat</span>;
+      case 'TIDAK_HADIR':
+        return <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-medium">❌ Tidak Hadir</span>;
+      default:
+        return <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-xs font-medium">-</span>;
+    }
+  };
 
   // Hanya tampilkan untuk asisten
   if (userRole !== 'ASISTEN') {
@@ -138,9 +101,9 @@ const AsistenPresensi: React.FC<AsistenPresensiProps> = ({ modulId, userRole }) 
 
   if (loading) {
     return (
-      <div className="mt-8 p-6 bg-green-50 rounded-lg">
-        <h3 className="text-lg font-semibold text-green-800 mb-4">📋 Manajemen Presensi</h3>
-        <p className="text-green-600">Loading...</p>
+      <div className="mt-8 p-6 bg-purple-50 rounded-lg">
+        <h3 className="text-lg font-semibold text-purple-800 mb-4">👥 Data Presensi</h3>
+        <p className="text-purple-600">Loading...</p>
       </div>
     );
   }
@@ -148,10 +111,10 @@ const AsistenPresensi: React.FC<AsistenPresensiProps> = ({ modulId, userRole }) 
   if (error) {
     return (
       <div className="mt-8 p-6 bg-red-50 rounded-lg">
-        <h3 className="text-lg font-semibold text-red-800 mb-4">📋 Manajemen Presensi</h3>
+        <h3 className="text-lg font-semibold text-red-800 mb-4">👥 Data Presensi</h3>
         <p className="text-red-600">Error: {error}</p>
         <button 
-          onClick={fetchPresensiList}
+          onClick={fetchData}
           className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
         >
           Retry
@@ -160,130 +123,106 @@ const AsistenPresensi: React.FC<AsistenPresensiProps> = ({ modulId, userRole }) 
     );
   }
 
-  return (
-    <div className="mt-8 p-6 bg-green-50 rounded-lg">
-      <h3 className="text-lg font-semibold text-green-800 mb-4">📋 Manajemen Presensi</h3>
-      
-      {presensiList.length === 0 ? (
-        <p className="text-green-600">Belum ada presensi untuk modul ini.</p>
-      ) : (
-        <div className="space-y-6">
-          {/* Statistik */}
-          {Object.keys(statistik).length > 0 && (
-            <div className="bg-white p-4 rounded-lg shadow-sm border border-green-200">
-              <h4 className="font-semibold text-gray-800 mb-3">📊 Statistik per Kelompok</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {Object.entries(statistik).map(([kelompok, stats]) => (
-                  <div key={kelompok} className="bg-gray-50 p-3 rounded">
-                    <p className="font-medium text-gray-800">👥 Kelompok {kelompok}</p>
-                    <div className="text-sm mt-2 space-y-1">
-                      <p>✅ Hadir: {stats.hadir}</p>
-                      <p>⚠️ Terlambat: {stats.terlambat}</p>
-                      <p>❌ Tidak Hadir: {stats.tidakHadir}</p>
-                      <p className="font-medium">Total: {stats.total}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+  const sudahPresensiCount = presensiList.length;
+  const belumPresensiCount = belumPresensi.length;
+  const totalPraktikan = allPraktikan.length;
+  const persentaseKehadiran = totalPraktikan > 0 ? ((sudahPresensiCount / totalPraktikan) * 100).toFixed(1) : 0;
 
-          {/* Daftar Presensi */}
-          <div className="text-sm text-green-600 mb-4">
-            Total Presensi: {presensiList.length} record
-          </div>
-          
-          <div className="space-y-4">
-            {presensiList.map((presensi) => (
-              <div key={presensi.id} className="bg-white p-4 rounded-lg shadow-sm border border-green-200">
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <p className="font-medium text-gray-800">
-                      📧 {presensi.user.email}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      👥 Kelompok: {presensi.kelompok}
-                    </p>
+  return (
+    <div className="mt-8 p-6 bg-purple-50 rounded-lg">
+      <h3 className="text-lg font-semibold text-purple-800 mb-4">👥 Data Presensi Praktikum</h3>
+      
+      {/* Statistics */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white p-4 rounded-lg shadow-sm">
+          <p className="text-xs text-gray-600 mb-1">Total Praktikan</p>
+          <p className="text-2xl font-bold text-gray-800">{totalPraktikan}</p>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow-sm">
+          <p className="text-xs text-gray-600 mb-1">Sudah Presensi</p>
+          <p className="text-2xl font-bold text-green-600">{sudahPresensiCount}</p>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow-sm">
+          <p className="text-xs text-gray-600 mb-1">Belum Presensi</p>
+          <p className="text-2xl font-bold text-red-600">{belumPresensiCount}</p>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow-sm">
+          <p className="text-xs text-gray-600 mb-1">Tingkat Kehadiran</p>
+          <p className="text-2xl font-bold text-blue-600">{persentaseKehadiran}%</p>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setActiveTab('hadir')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'hadir'
+              ? 'bg-green-600 text-white'
+              : 'bg-white text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          Sudah Presensi ({sudahPresensiCount})
+        </button>
+        <button
+          onClick={() => setActiveTab('belum')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'belum'
+              ? 'bg-red-600 text-white'
+              : 'bg-white text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          Belum Presensi ({belumPresensiCount})
+        </button>
+      </div>
+
+      {/* Content */}
+      {activeTab === 'hadir' ? (
+        <div className="space-y-3">
+          {presensiList.length === 0 ? (
+            <p className="text-purple-600 text-center py-8">Belum ada yang melakukan presensi</p>
+          ) : (
+            presensiList.map((presensi) => (
+              <div key={presensi.id} className="bg-white p-4 rounded-lg shadow-sm border border-purple-200">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-800">👤 {presensi.nama}</p>
+                    <p className="text-sm text-gray-600">🆔 NIM: {presensi.nim}</p>
+                    <p className="text-sm text-gray-600">👥 Kelompok: {presensi.kelompok}</p>
                     <p className="text-xs text-gray-500">
-                      📅 Waktu Presensi: {new Date(presensi.waktuPresensi).toLocaleString('id-ID')}
+                      🕐 {new Date(presensi.waktuPresensi).toLocaleString('id-ID')}
                     </p>
                   </div>
-                  
                   <div className="text-right">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(presensi.status)}`}>
-                      {getStatusIcon(presensi.status)} {presensi.status.replace('_', ' ')}
-                    </span>
+                    {getStatusBadge(presensi.status)}
                   </div>
                 </div>
-                
-                {presensi.keterangan && (
-                  <div className="mb-3 p-2 bg-gray-50 rounded text-sm">
-                    <strong>Keterangan:</strong> {presensi.keterangan}
-                  </div>
-                )}
-                
-                {editingPresensi === presensi.id ? (
-                  <div className="mt-3 p-3 bg-gray-50 rounded space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Status:</label>
-                      <select
-                        value={newStatus}
-                        onChange={(e) => setNewStatus(e.target.value as 'HADIR' | 'TIDAK_HADIR' | 'TERLAMBAT')}
-                        className="border rounded px-2 py-1 text-sm"
-                      >
-                        <option value="HADIR">✅ Hadir</option>
-                        <option value="TERLAMBAT">⚠️ Terlambat</option>
-                        <option value="TIDAK_HADIR">❌ Tidak Hadir</option>
-                      </select>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Keterangan (opsional):</label>
-                      <input
-                        type="text"
-                        value={keterangan}
-                        onChange={(e) => setKeterangan(e.target.value)}
-                        placeholder="Masukkan keterangan..."
-                        className="w-full border rounded px-2 py-1 text-sm"
-                      />
-                    </div>
-                    
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleUpdateStatus(presensi.id)}
-                        className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
-                      >
-                        ✅ Update
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditingPresensi(null);
-                          setKeterangan(presensi.keterangan || '');
-                          setNewStatus(presensi.status);
-                        }}
-                        className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
-                      >
-                        ❌ Batal
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex gap-2 mt-3">
-                    <button
-                      onClick={() => {
-                        setEditingPresensi(presensi.id);
-                        setNewStatus(presensi.status);
-                        setKeterangan(presensi.keterangan || '');
-                      }}
-                      className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
-                    >
-                      ✏️ Edit Status
-                    </button>
-                  </div>
-                )}
               </div>
-            ))}
-          </div>
+            ))
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {belumPresensi.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-green-600 font-medium mb-2">🎉 Semua praktikan sudah presensi!</p>
+              <p className="text-gray-600 text-sm">Tingkat kehadiran 100%</p>
+            </div>
+          ) : (
+            belumPresensi.map((user) => (
+              <div key={user.id} className="bg-white p-4 rounded-lg shadow-sm border border-red-200">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="font-medium text-gray-800">📧 {user.email}</p>
+                    <p className="text-sm text-gray-600">🆔 NIM: {user.nim}</p>
+                  </div>
+                  <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-medium">
+                    ⚠️ Belum Presensi
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>
